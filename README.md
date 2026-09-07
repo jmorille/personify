@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Personify — app web de pilotage d'environnement
 
-## Getting Started
+App Next.js (App Router, TS, Tailwind, shadcn/ui) qui pilote des nœuds d'éclairage
+**Acuity LocalConnect** en **Bluetooth (Web Bluetooth)**, en réimplémentant le
+protocole reverse-engineeré de l'app `com.acuitybrands.pca` (« Personify »).
 
-First, run the development server:
+Le protocole a été reverse-engineeré depuis l'app Android Acuity PCA ; la spec
+détaillée est conservée en privé (hors de ce dépôt).
+
+## Ce qui est réel vs simulé
+
+- **Éclairage** : commandes **réelles** LocalConnect — handshake **ECDH P-256 →
+  AES-128-CTR**, trames **KLV** chiffrées (`CurrentDimLevel`, `CCT`, `Identify`).
+  Testé de bout en bout contre un simulateur qui exécute le côté device.
+- **Climat & scènes** : **simulés** en mémoire (le protocole WRC/UniTouch derrière
+  la partie CVC/stores n'a pas été reconstitué — nécessite un device pour le reverse).
+
+⚠️ Aucun matériel réel n'a été disponible pour valider les trames sur un vrai
+appareil. Le code est fidèle au binaire décompilé et vérifié par tests, mais le
+pilotage d'un vrai luminaire reste à confirmer sur device.
+
+## Lancer
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+pnpm dev        # http://localhost:3000
+pnpm test       # 17 tests (KLV, framing, ECDH/AES-CTR, KEK, e2e chiffré)
+pnpm build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- **Démo (simulateur)** : fonctionne partout, sans matériel.
+- **Connecter en Bluetooth** : nécessite **Chrome/Edge desktop ou Chrome Android**
+  (Web Bluetooth), servi en **HTTPS** ou `localhost`. Pas d'iOS/Safari/Firefox.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Architecture
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+src/lib/ble/
+  klv.ts          # KLV (ControlKeys / KLVPacket / RequestPacket)
+  framing.ts      # découpage MTU + octet de contrôle
+  security.ts     # ECDH P-256, SHA-256, AES-128-CTR, KEK passcode
+  localconnect.ts # LocalConnectSession : handshake + commandes haut niveau
+  link.ts         # interface GATT commune
+  webble.ts       # transport Web Bluetooth (navigateur)
+  simulator.ts    # device simulé (côté périphérique, chiffrement complet)
+  uuids.ts        # UUIDs GATT LocalConnect
+src/lib/store.ts  # état applicatif (zustand)
+src/components/   # UI (cartes éclairage / climat / scènes)
+```
 
-## Learn More
+## Prochaines étapes
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Valider les trames sur un **vrai contrôleur LocalConnect** (ajuster l'échelle de
+  gradation 0–255 vs %, et l'`assetId+acuityOrgId` réel comme passcode).
+- Reverser le protocole **WRC/UniTouch** (CVC/stores) sur un device réel, puis
+  brancher un adaptateur derrière l'UI Climat/Scènes déjà en place.
